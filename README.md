@@ -37,7 +37,7 @@ CF-Workers-TEXT2KV/
 | 无 readToken | `filename` | `user-profile` |
 | 有 readToken | `filename:readToken` | `user-profile:a1b2c3` |
 
-- `filename` 仅允许字母、数字、连字符，最长 200 字符
+- `filename` 仅允许字母、数字、连字符、下划线，最长 200 字符
 - 同一个 filename 下只能有一个 readToken 版本（保存时自动清理旧版本）
 - 列表接口按第一个冒号拆分，无冒号则 readToken 为空
 
@@ -98,7 +98,7 @@ GET /api/list?token=YOUR_TOKEN
 
 保存 key-value。需要 admin token。
 
-- filename 仅允许字母、数字、连字符（`[a-zA-Z0-9-]`），最长 200 字符
+- filename 仅允许字母、数字、连字符、下划线（`[a-zA-Z0-9_-]`），最长 200 字符
 - 同一个 filename 下只能有一个 readToken 版本，保存时自动清理旧版本
 
 **请求**
@@ -144,12 +144,12 @@ GET /api/list?token=YOUR_TOKEN
 
 | 规则 | 说明 |
 |------|------|
-| 字符集 | 仅允许字母（a-z, A-Z）、数字（0-9）、连字符（-） |
+| 字符集 | 仅允许字母（a-z, A-Z）、数字（0-9）、连字符（-）、下划线（_） |
 | 长度 | 1-200 字符 |
-| 禁止字符 | `.`、`_`、`:`、`/`、空格及其他特殊字符 |
-| 示例 | `user-profile-v2` ✅ / `my.file` ❌ / `my_key` ❌ |
+| 禁止字符 | `.`、`:`、`/`、空格及其他特殊字符 |
+| 示例 | `user-profile-v2` ✅ / `my_key` ✅ / `my.file` ❌ |
 
-> **注意**：旧版兼容路由（`/{key}?token=xxx`）不校验 key 格式，可能创建含特殊字符的 key。建议通过管理界面操作。
+> **注意**：旧版兼容路由（`/{key}?token=xxx&text=...`）写入时也会校验 key 格式，不符合规则的请求返回 HTTP 400。
 
 ## 旧版兼容接口
 
