@@ -17,6 +17,7 @@
 - **字符统计** — 显示 content 字符数
 - **旧版兼容** — 保留原有 URL 路径操作方式（`/{key}?token=xxx&text=...`）
 - **脚本工具** — 提供 Windows bat 和 Linux sh 上传脚本
+- **智能清理** — 编辑 readToken 时自动清理旧 key，避免孤儿数据
 
 ## 项目结构
 
@@ -26,6 +27,19 @@ CF-Workers-TEXT2KV/
 ├── LICENSE         # GPL v3
 └── README.md
 ```
+
+## 数据模型
+
+每个逻辑 key 对应 KV 中的一条记录，格式为 `filename` 或 `filename:readToken`（第一个冒号分隔）。
+
+| 场景 | KV Key 格式 | 示例 |
+|------|------------|------|
+| 无 readToken | `filename` | `user-profile` |
+| 有 readToken | `filename:readToken` | `user-profile:a1b2c3` |
+
+- `filename` 仅允许字母、数字、连字符，最长 200 字符
+- 同一个 filename 下只能有一个 readToken 版本（保存时自动清理旧版本）
+- 列表接口按第一个冒号拆分，无冒号则 readToken 为空
 
 ## 部署
 
@@ -61,37 +75,81 @@ wrangler deploy
 
 ## API 说明
 
-### GET /api/list?token=xxx
+所有 API 均支持 `Authorization: Bearer <token>` 或 URL 参数 `?token=<token>` 两种鉴权方式。
+
+### GET /api/list
+
 列出所有 key 及其 readToken。需要 admin token。
 
+**请求**
+```
+GET /api/list?token=YOUR_TOKEN
+```
+
+**响应**
+```json
+[
+  { "key": "user-profile", "readToken": "" },
+  { "key": "private-doc", "readToken": "a1b2c3" }
+]
+```
+
 ### POST /api/save
+
 保存 key-value。需要 admin token。
 
-请求体：
+- filename 仅允许字母、数字、连字符（`[a-zA-Z0-9-]`），最长 200 字符
+- 同一个 filename 下只能有一个 readToken 版本，保存时自动清理旧版本
+
+**请求**
 ```json
 {
-  "key": "my-key",
+  "key": "user-profile",
   "content": "my-value",
   "readToken": "optional-read-token"
 }
 ```
 
+**响应**
+```json
+{ "success": true }
+```
+
 ### POST /api/delete
+
 删除 key。需要 admin token。
 
-请求体：
+**请求**
 ```json
 {
-  "key": "my-key"
+  "key": "user-profile",
+  "readToken": "optional-read-token"
 }
 ```
 
+**响应**
+```json
+{ "success": true }
+```
+
 ### GET /api/get?key=xxx&readToken=yyy
+
 公开读取接口。返回纯文本内容（`Content-Type: text/plain; charset=utf-8`），浏览器直接显示。
 
 - 如果 key 未设置 readToken：直接访问 `/api/get?key=my-key`
 - 如果 key 设置了 readToken：需要提供 `&readToken=yyy`
 - 错误时返回 JSON（如 `{ "error": "Key 不存在" }`）
+
+## Key 命名规则
+
+| 规则 | 说明 |
+|------|------|
+| 字符集 | 仅允许字母（a-z, A-Z）、数字（0-9）、连字符（-） |
+| 长度 | 1-200 字符 |
+| 禁止字符 | `.`、`_`、`:`、`/`、空格及其他特殊字符 |
+| 示例 | `user-profile-v2` ✅ / `my.file` ❌ / `my_key` ❌ |
+
+> **注意**：旧版兼容路由（`/{key}?token=xxx`）不校验 key 格式，可能创建含特殊字符的 key。建议通过管理界面操作。
 
 ## 旧版兼容接口
 
@@ -127,5 +185,10 @@ GET https://your-worker.com/config/update.sh?token=YOUR_TOKEN
 | 存储 | Upstash Redis | Cloudflare Workers KV |
 | 架构 | 多文件（API + 静态 UI） | 单文件（内嵌 HTML） |
 | Token 变量 | `ADMIN_TOKEN` | `TOKEN` |
+| KV Key 格式 | `filename` + `_meta:filename` | `filename` 或 `filename:readToken` |
 | 旧版兼容 | 无 | 保留 URL 路径操作 |
 | 部署方式 | wrangler / 平台 | Dashboard 粘贴即用 |
+
+## 许可证
+
+GPL v3 — 见 [LICENSE](./LICENSE)

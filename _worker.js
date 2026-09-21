@@ -516,7 +516,22 @@ export default {
                 const { key, content, readToken } = body;
                 const err = validateKey(key);
                 if (err) return json({ error: err }, 400);
-                await env.KV.put(buildFullKey(key, readToken || ''), content || '');
+                const newFullKey = buildFullKey(key, readToken || '');
+
+                // 清理旧 key：同一个 filename 下只保留最新的 readToken 版本
+                // 1) 新 key 带 readToken → 删除裸 key（如果存在）
+                if (newFullKey !== key) {
+                    await env.KV.del(key);
+                }
+                // 2) 删除同 filename 前缀下其他 readToken 的旧 key
+                const existingList = await env.KV.list({ prefix: key + ':', limit: 1000 });
+                for (const kvKey of existingList.keys) {
+                    if (kvKey.name !== newFullKey) {
+                        await env.KV.del(kvKey.name);
+                    }
+                }
+
+                await env.KV.put(newFullKey, content || '');
                 return json({ success: true });
             }
 
