@@ -521,13 +521,13 @@ export default {
                 // 清理旧 key：同一个 filename 下只保留最新的 readToken 版本
                 // 1) 新 key 带 readToken → 删除裸 key（如果存在）
                 if (newFullKey !== key) {
-                    await env.KV.del(key);
+                    await env.KV.delete(key);
                 }
                 // 2) 删除同 filename 前缀下其他 readToken 的旧 key
                 const existingList = await env.KV.list({ prefix: key + ':', limit: 1000 });
                 for (const kvKey of existingList.keys) {
                     if (kvKey.name !== newFullKey) {
-                        await env.KV.del(kvKey.name);
+                        await env.KV.delete(kvKey.name);
                     }
                 }
 
@@ -541,7 +541,7 @@ export default {
                 try { body = await request.json(); } catch { return json({ error: '无效的 JSON 请求体' }, 400); }
                 const { key, readToken } = body;
                 if (!key) return json({ error: 'Key 不能为空' }, 400);
-                await env.KV.del(buildFullKey(key, readToken || ''));
+                await env.KV.delete(buildFullKey(key, readToken || ''));
                 return json({ success: true });
             }
 
