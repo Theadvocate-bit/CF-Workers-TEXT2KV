@@ -1,20 +1,3 @@
-// CF-Workers-TEXT2KV — Cloudflare Workers + KV 文本存储
-// 架构参考 edgeone-text2kv，后端从 Upstash Redis 改为 Cloudflare Workers KV
-//
-// 单文件部署：直接粘贴到 Cloudflare Workers 编辑器即可运行
-// 需要配置 KV 绑定（binding: KV）和 TOKEN 环境变量
-//
-// 路由结构：
-//   /              → 管理界面（内嵌 HTML）
-//   /api/list      → GET  列出所有 key（需 admin token）
-//   /api/save      → POST 保存 key-value（需 admin token）
-//   /api/delete    → POST 删除 key（需 admin token）
-//   /api/get       → GET  读取 key 内容（纯文本，readToken 鉴权）
-//   /config        → 配置信息页（旧版兼容）
-//   /{key}         → 直接访问 key 内容（旧版兼容）
-//   /{key}?text=   → 通过 URL 写入（旧版兼容）
-
-// ===== 内嵌 HTML（管理界面）=====
 var INDEX_HTML = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -437,14 +420,12 @@ document.addEventListener('DOMContentLoaded', function() { initEvents(); tryAuto
 </body>
 </html>`;
 
-// ===== Worker =====
 export default {
     async fetch(request, env) {
         try {
             const url = new URL(request.url);
             const path = url.pathname;
 
-            // CORS
             if (request.method === 'OPTIONS') {
                 return new Response(null, {
                     headers: {
@@ -488,12 +469,10 @@ export default {
 
             const buildFullKey = (filename, readToken) => readToken ? filename + ':' + readToken : filename;
 
-            // ===== 管理界面（内嵌 HTML）=====
             if (path === '/' || path === '/index.html') {
                 return html(INDEX_HTML);
             }
 
-            // ===== API Routes =====
             if (path === '/api/list') {
                 if (!isAdmin()) return json({ error: '鉴权失败' }, 403);
                 const list = await env.KV.list({ limit: 1000 });
@@ -518,12 +497,9 @@ export default {
                 if (err) return json({ error: err }, 400);
                 const newFullKey = buildFullKey(key, readToken || '');
 
-                // 清理旧 key：同一个 filename 下只保留最新的 readToken 版本
-                // 1) 新 key 带 readToken → 删除裸 key（如果存在）
                 if (newFullKey !== key) {
                     await env.KV.delete(key);
                 }
-                // 2) 删除同 filename 前缀下其他 readToken 的旧 key
                 const existingList = await env.KV.list({ prefix: key + ':', limit: 1000 });
                 for (const kvKey of existingList.keys) {
                     if (kvKey.name !== newFullKey) {
@@ -554,7 +530,6 @@ export default {
                 return text(content);
             }
 
-            // ===== Legacy Routes（旧版兼容）=====
             if (path === '/config' || path === '/' + adminToken) {
                 const legacyAuth = url.searchParams.get('token') === adminToken;
                 if (!legacyAuth) return text('token 有误', 403);
@@ -575,7 +550,6 @@ export default {
                 });
             }
 
-            // 旧版直接访问：/{key}?token=xxx
             const isSkip = (path === '/') || path.startsWith('/config') || path.startsWith('/api/');
             const isConfigPath = path === '/' + adminToken;
 
@@ -610,7 +584,6 @@ export default {
     }
 };
 
-// ===== 工具函数 =====
 function base64Decode(str) {
     try {
         const bytes = new Uint8Array(atob(str).split('').map(c => c.charCodeAt(0)));
