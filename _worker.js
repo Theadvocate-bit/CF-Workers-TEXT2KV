@@ -249,7 +249,7 @@ function toggleTheme() {
     applyTheme(currentTheme());
 })();
 var STORAGE_KEY = 'text2kv_cf_admin_token';
-var KEY_REGEX = /^[\w.\\-:/]{1,200}$/;
+var KEY_REGEX = /^[\w.:/-]{1,200}$/;
 var state = { token: null, keys: [], editing: null, deleting: null };
 function $(id) { return document.getElementById(id); }
 function toast(msg, type) {
@@ -480,7 +480,7 @@ export default {
             const validateKey = (k) => {
                 if (!k || typeof k !== 'string') return 'Key 不能为空';
                 if (k.startsWith('_meta:')) return 'Key 不允许使用 _meta: 前缀';
-                if (!/^[\w.\-:/]{1,200}$/.test(k))
+                if (!/^[\w.:/-]{1,200}$/.test(k))
                     return 'Key 仅允许字母、数字、_ - . : /，最长 200 字符';
                 return null;
             };
