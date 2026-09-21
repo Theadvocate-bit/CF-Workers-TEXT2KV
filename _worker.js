@@ -187,7 +187,7 @@ td.actions .btn-sm { margin-left: 6px; }
             <div class="field">
                 <label for="edit-key">Key</label>
                 <input type="text" id="edit-key" placeholder="my-key" maxlength="200" autocomplete="off">
-                <div class="hint">仅允许字母、数字、_ - . : / ，最长 200 字符；不允许以 _meta: 开头。</div>
+                <div class="hint">仅允许字母、数字、连字符，最长 200 字符</div>
             </div>
             <div class="field">
                 <label for="edit-content">Content <span id="content-size" style="font-weight:normal;color:var(--text-muted);font-size:13px;"></span></label>
@@ -249,7 +249,7 @@ function toggleTheme() {
     applyTheme(currentTheme());
 })();
 var STORAGE_KEY = 'text2kv_cf_admin_token';
-var KEY_REGEX = /^[a-zA-Z0-9_.:/-]{1,200}$/;
+var KEY_REGEX = /^[a-zA-Z0-9-]{1,200}$/;
 var state = { token: null, keys: [], editing: null, deleting: null };
 function $(id) { return document.getElementById(id); }
 function toast(msg, type) {
@@ -372,20 +372,22 @@ async function saveKey() {
     var content = $('edit-content').value;
     var readToken = $('edit-token').value.trim();
     if (!key) { toast('Key 不能为空', 'error'); return; }
-    if (key.startsWith('_meta:')) { toast('Key 不允许使用 _meta: 前缀', 'error'); return; }
-    if (!KEY_REGEX.test(key)) { toast('Key 格式不合法：仅允许字母、数字、_ - . : / ，最长 200 字符', 'error'); return; }
+    if (!KEY_REGEX.test(key)) { toast('Key 仅允许字母、数字、连字符，最长 200 字符', 'error'); return; }
     var btn = $('edit-save-btn'); btn.disabled = true; btn.textContent = '保存中…';
     try { await api('POST', '/api/save', { key: key, content: content, readToken: readToken }); toast('保存成功', 'success'); closeEdit(); loadList(); }
     catch (e) { toast('保存失败: ' + e.message, 'error'); }
     finally { btn.disabled = false; btn.textContent = '保存'; }
 }
-function openDelete(key) { state.deleting = key; $('delete-key').textContent = key; $('delete-modal').hidden = false; }
+function openDelete(key) {
+    var found = state.keys.find(function(k) { return k.key === key; });
+    state.deleting = { key: key, readToken: (found && found.readToken) || '' };
+    $('delete-key').textContent = key; $('delete-modal').hidden = false;
+}
 function closeDelete() { state.deleting = null; $('delete-modal').hidden = true; }
 async function confirmDelete() {
-    var key = state.deleting;
-    if (!key) return;
+    if (!state.deleting) return;
     var btn = $('delete-confirm-btn'); btn.disabled = true; btn.textContent = '删除中…';
-    try { await api('POST', '/api/delete', { key: key }); toast('已删除: ' + key, 'success'); closeDelete(); loadList(); }
+    try { await api('POST', '/api/delete', { key: state.deleting.key, readToken: state.deleting.readToken }); toast('已删除: ' + state.deleting.key, 'success'); closeDelete(); loadList(); }
     catch (e) { toast('删除失败: ' + e.message, 'error'); }
     finally { btn.disabled = false; btn.textContent = '删除'; }
 }
@@ -479,11 +481,12 @@ export default {
 
             const validateKey = (k) => {
                 if (!k || typeof k !== 'string') return 'Key 不能为空';
-                if (k.startsWith('_meta:')) return 'Key 不允许使用 _meta: 前缀';
-                if (!/^[a-zA-Z0-9_.:/-]{1,200}$/.test(k))
-                    return 'Key 仅允许字母、数字、_ - . : /，最长 200 字符';
+                if (!/^[a-zA-Z0-9-]{1,200}$/.test(k))
+                    return 'Key 仅允许字母、数字、连字符，最长 200 字符';
                 return null;
             };
+
+            const buildFullKey = (filename, readToken) => readToken ? filename + ':' + readToken : filename;
 
             // ===== 管理界面（内嵌 HTML）=====
             if (path === '/' || path === '/index.html') {
@@ -495,12 +498,13 @@ export default {
                 if (!isAdmin()) return json({ error: '鉴权失败' }, 403);
                 const list = await env.KV.list({ limit: 1000 });
                 const keys = [];
-                for (const key of list.keys) {
-                    if (key.name.startsWith('_meta:')) continue;
-                    const meta = await env.KV.get('_meta:' + key.name);
-                    let readToken = '';
-                    if (meta) { try { readToken = JSON.parse(meta).readToken || ''; } catch {} }
-                    keys.push({ key: key.name, readToken });
+                for (const kvKey of list.keys) {
+                    const ci = kvKey.name.indexOf(':');
+                    if (ci === -1) {
+                        keys.push({ key: kvKey.name, readToken: '' });
+                    } else {
+                        keys.push({ key: kvKey.name.substring(0, ci), readToken: kvKey.name.substring(ci + 1) });
+                    }
                 }
                 return json(keys);
             }
@@ -512,8 +516,7 @@ export default {
                 const { key, content, readToken } = body;
                 const err = validateKey(key);
                 if (err) return json({ error: err }, 400);
-                await env.KV.put(key, content || '');
-                await env.KV.put('_meta:' + key, JSON.stringify({ readToken: readToken || '' }));
+                await env.KV.put(buildFullKey(key, readToken || ''), content || '');
                 return json({ success: true });
             }
 
@@ -521,25 +524,18 @@ export default {
                 if (!isAdmin()) return json({ error: '鉴权失败' }, 403);
                 let body = {};
                 try { body = await request.json(); } catch { return json({ error: '无效的 JSON 请求体' }, 400); }
-                const { key } = body;
+                const { key, readToken } = body;
                 if (!key) return json({ error: 'Key 不能为空' }, 400);
-                await env.KV.del(key);
-                await env.KV.del('_meta:' + key);
+                await env.KV.del(buildFullKey(key, readToken || ''));
                 return json({ success: true });
             }
 
             if (path === '/api/get') {
                 const key = (url.searchParams.get('key') || '').trim();
-                if (!key || key.startsWith('_meta:')) return json({ error: 'Key 无效' }, 400);
-                const content = await env.KV.get(key);
+                const readToken = (url.searchParams.get('readToken') || '').trim();
+                if (!key) return json({ error: 'Key 无效' }, 400);
+                const content = await env.KV.get(buildFullKey(key, readToken));
                 if (content === null) return json({ error: 'Key 不存在' }, 404);
-                const meta = await env.KV.get('_meta:' + key);
-                let requiredToken = '';
-                if (meta) { try { requiredToken = JSON.parse(meta).readToken || ''; } catch {} }
-                if (requiredToken) {
-                    const provided = (url.searchParams.get('readToken') || '').trim();
-                    if (provided !== requiredToken) return json({ error: '需要有效的读取 Token' }, 403);
-                }
                 return text(content);
             }
 
