@@ -1,62 +1,175 @@
-# 文本文件储存器 CF-Workers-TEXT2KV
+# CF-Workers-TEXT2KV
 
-CF-Workers-TEXT2KV 是一个在 Cloudflare Workers 上运行的无服务器应用程序,可以将文本文件存储到 Cloudflare Workers KV 键值存储中,并且可以通过 URL 请求读取或更新这些文本文件。它提供了一个安全的方式来管理和访问您的文本文件,同时利用了 Cloudflare 的全球分布式网络。
+部署在 [Cloudflare Workers](https://workers.cloudflare.com/) 上的轻量 KV 文本存储工具，使用 Cloudflare Workers KV 作为后端，提供完整的 Web 管理界面。
 
-## 功能特性
+参考 [edgeone-text2kv](https://github.com/Theadvocate-bit/edgeone-text2kv) 改造。
 
-- **文本文件存储**: 您可以将任何文本文件存储到 Cloudflare Workers KV 键值存储中,包括纯文本、JSON、XML 等格式。
-- **通过 URL 读取文件**: 只需通过构造合适的 URL,就可以读取存储在 KV 中的文本文件内容。
-- **通过 URL 更新文件**: 您可以使用 URL 查询参数将新的文本内容上传到 KV,从而实现文件的更新。
-- **Base64 编码支持**: 支持使用 Base64 编码的方式上传和下载文件,以应对某些特殊字符场景。
-- **安全访问控制**: 通过设置 token 参数,可以限制只有拥有正确密钥的请求才能访问您的文件。
-- **辅助工具脚本**: 提供了 Windows 批处理文件和 Linux Shell 脚本,用于方便地从本地上传文件到 KV。
+## 功能
 
-## 使用说明 [部署教程](https://youtu.be/crln7SNrEbQ)
+- **Web 管理界面** — 登录、创建、编辑、删除、搜索 key-value
+- **深色模式** — 跟随系统偏好，支持手动切换，自动持久化
+- **访问链接** — 一键复制公开访问 URL，浏览器直接显示纯文本内容
+- **内容加密** — 为 key 设置 readToken，访问时自动附加到链接
+- **搜索过滤** — 按 key 实时搜索
+- **复制功能** — 复制 key 名称或完整访问链接
+- **字符统计** — 显示 content 字符数
+- **旧版兼容** — 保留原有 URL 路径操作方式（`/{key}?token=xxx&text=...`）
+- **脚本工具** — 提供 Windows bat 和 Linux sh 上传脚本
 
-1. **部署到 Cloudflare Workers**
+## 项目结构
 
-  将项目代码部署到您的 Cloudflare Workers 服务。您需要先在 Cloudflare 上创建一个 Workers 项目,然后将 `worker.js` 文件的内容复制粘贴到 Workers 编辑器中。
+```
+CF-Workers-TEXT2KV/
+├── _worker.js              # Worker 代码（API + 路由 + 旧版兼容）
+├── public/
+│   └── index.html          # Web 管理界面（静态资源）
+├── wrangler.toml           # Cloudflare Workers 配置
+├── LICENSE                 # GPL v3
+└── README.md
+```
 
-2. **创建 KV 命名空间**
+## 部署
 
-  在您的 Cloudflare Workers 项目中,创建一个新的 `KV` 命名空间,用于存储文本文件。记下这个 KV 命名空间的名称,因为您需要将它绑定到 Workers 上。
+### 方式一：Wrangler CLI（推荐）
 
-3. **设置 TOKEN 变量**
+1. 安装 Wrangler：`npm install -g wrangler`
+2. 登录：`wrangler login`
+3. 创建 KV 命名空间：`wrangler kv:namespace create TEXT2KV`
+4. 将返回的 ID 填入 `wrangler.toml` 的 `kv_namespaces` 配置
+5. 修改 `wrangler.toml` 中的 `TOKEN` 为你想要的安全 token
+6. 部署：`wrangler deploy`
 
-  - 为了增加安全性,您需要设置一个 TOKEN 变量,作为访问文件的密钥。在 Cloudflare Workers 的环境变量设置中,添加一个名为 `TOKEN` 的变量,并为其赋予一个安全的值。
-  - 默认 TOKEN 为：`passwd`
+### 方式二：Cloudflare Dashboard
 
-4. **访问配置页面**
+1. 进入 [Cloudflare Workers Dashboard](https://dash.cloudflare.com/?to=/:account/workers)
+2. 创建新 Worker
+3. 将 `_worker.js` 内容粘贴到编辑器
+4. 创建 KV 命名空间并绑定（binding 名称必须为 `KV`）
+5. 在 Settings → Variables 中添加 `TOKEN` 变量
+6. 在 Settings → Static Assets 中添加 `public/` 目录（或使用 Pages 部署静态文件）
 
-例如 您的workers项目域名为：`txt.cmliussss.workers.dev` , token值为 `passwd`；
-  - 访问 `https://您的Workers域名/config?token=您的TOKEN` 或 `https://您的Workers域名/您的TOKEN`，您将看到一个配置页面，其中包含了使用说明和下载脚本的链接。
-  - 你的项目配置页则为：
-     ```url
-     https://txt.cmliussss.workers.dev/config?token=passwd
-     或
-     https://txt.cmliussss.workers.dev/passwd
-     ```
+### 环境变量
 
-5. **使用辅助脚本上传文件**
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `TOKEN` | 管理 token（API 鉴权 + 旧版访问） | `passwd` |
 
-  - Windows 用户可以下载 `update.bat` 脚本,然后执行 `update.bat 文件名` 来上传本地文件到 KV。
-  - Linux 用户可以下载 `update.sh` 脚本,执行 `./update.sh 文件名` 来上传本地文件。
-  - **注意：因为URL长度限制，如果保存内容过长则只能通过直接编辑`KV`对应文件内容来实现大文件的修改保存。**
+### KV 绑定
 
-6. **通过 URL 访问文件**
+| Binding | 说明 |
+|---------|------|
+| `KV` | Cloudflare Workers KV 命名空间 |
 
-例如 您的workers项目域名为：`txt.cmliussss.workers.dev` , token值为 `test` , 需要访问的文件名为 `ip.txt`；
-  - 构造 URL 的格式为 `https://您的Workers域名/文件名?token=您的TOKEN`。您就可以在浏览器中查看该文件的内容了。
-  - 你的访问地址则为： `https://txt.cmliussss.workers.dev/ip.txt?token=test`。
+## API 说明
 
-7. **简单的更新文件内容**
+### GET /api/list?token=xxx
+列出所有 key 及其 readToken。需要 admin token。
 
-  要更新某个文件的内容,可以使用 URL 查询参数 `text` 或 `b64` 来指定新的文本内容或 Base64 编码后的内容。URL 的格式为:
-  ```url
-  https://您的Workers域名/文件名?token=您的TOKEN&text=新文本内容
-  或
-  https://您的Workers域名/文件名?token=您的TOKEN&b64=Base64编码的新文本内容
-  ```
-Workers 会自动将新内容存储到对应的文件中。
+### POST /api/save
+保存 key-value。需要 admin token。
 
-通过这个无服务器应用,您可以方便地在 Cloudflare 的分布式网络上存储和管理文本文件,同时享受高性能和安全可靠的优势。欢迎使用 CF-Workers-TEXT2KV!
+请求体：
+```json
+{
+  "key": "my-key",
+  "content": "my-value",
+  "readToken": "optional-read-token"
+}
+```
+
+### POST /api/delete
+删除 key。需要 admin token。
+
+请求体：
+```json
+{
+  "key": "my-key"
+}
+```
+
+### GET /api/get?key=xxx&readToken=yyy
+公开读取接口。返回纯文本内容（`Content-Type: text/plain; charset=utf-8`），浏览器直接显示。
+
+- 如果 key 未设置 readToken：直接访问 `/api/get?key=my-key`
+- 如果 key 设置了 readToken：需要提供 `&readToken=yyy`
+- 错误时返回 JSON（如 `{ "error": "Key 不存在" }`）
+
+## 旧版兼容接口
+
+原有的 URL 路径操作方式仍然可用：
+
+### 读取文件
+```
+GET https://your-worker.com/{key}?token=YOUR_TOKEN
+```
+
+### 写入文件（通过 URL 参数）
+```
+GET https://your-worker.com/{key}?token=YOUR_TOKEN&text=新内容
+GET https://your-worker.com/{key}?token=YOUR_TOKEN&b64=Base64编码内容
+```
+
+### 配置页面
+```
+GET https://your-worker.com/config?token=YOUR_TOKEN
+```
+
+### 脚本下载
+```
+GET https://your-worker.com/config/update.bat?token=YOUR_TOKEN
+GET https://your-worker.com/config/update.sh?token=YOUR_TOKEN
+```
+
+## 管理界面功能
+
+### 登录
+- 首次使用需设置 Admin Token（浏览器本地存储）
+- 后续自动填充，无需重复输入
+
+### 创建 Key
+- 点击「＋ 新建 Key」按钮，弹出表单
+- 填写 key 名称和 content 内容
+- 可选设置 readToken（加密读取权限）
+
+### 编辑 Key
+- 点击「编辑」按钮，弹出表单
+- 修改 content 或 readToken
+- 实时显示字符数统计
+
+### 删除 Key
+- 点击「删除」按钮，确认弹窗后删除
+
+### 搜索
+- 在搜索框输入关键词，按 key 实时过滤
+
+### 复制
+- 点击「链接」复制完整访问 URL（含 readToken 时自动附加）
+- 访问链接打开后直接显示纯文本内容
+
+### 深色模式
+- 默认跟随系统偏好
+- 右上角切换按钮手动切换
+- 自动保存到浏览器本地存储
+
+## 与 edgeone-text2kv 的差异
+
+| 项 | edgeone-text2kv | CF-Workers-TEXT2KV |
+|---|---|---|
+| 平台 | EdgeOne Makers | Cloudflare Workers |
+| 存储 | Upstash Redis | Cloudflare Workers KV |
+| 路由 | 文件即路由（多文件） | 单文件路由（_worker.js） |
+| 静态资源 | `edgeone.json` 指定 | `wrangler.toml` 配置 assets |
+| Token 变量 | `ADMIN_TOKEN` | `TOKEN` |
+| 旧版兼容 | 无 | 保留 URL 路径操作 |
+
+## 迁移说明
+
+本项目从原始单文件架构改造为结构化 API + Web 管理界面，参考 edgeone-text2kv 设计。
+
+主要变更：
+1. **新增 API 端点**：`/api/list`、`/api/save`、`/api/delete`、`/api/get`
+2. **新增 Web 管理界面**：`public/index.html`（CRUD/搜索/深色模式）
+3. **新增 per-key readToken**：支持为每个 key 设置独立的读取 token
+4. **纯文本响应**：`/api/get` 返回 `text/plain`，浏览器直接显示内容
+5. **旧版兼容**：保留原有的 URL 路径操作方式
+6. **配置分离**：`wrangler.toml` 管理 KV 绑定和静态资源
